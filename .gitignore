@@ -1,0 +1,26 @@
+# Ignore everything by default. This repository is a UI-only public snapshot.
+*
+
+# Keep repo metadata and documentation.
+!.gitignore
+!README.md
+!LICENSE
+
+# Keep only the public design surface.
+!iCloudManageTool/
+!iCloudManageTool/Views/
+!iCloudManageTool/Views/**
+!iCloudManageTool/DesignSystem/
+!iCloudManageTool/DesignSystem/**
+!iCloudManageTool/Assets.xcassets/
+!iCloudManageTool/Assets.xcassets/**
+
+# Never publish production logic.
+CloudwardCore/
+iCloudManageTool/Services/
+iCloudManageTool/ViewModels/
+iCloudManageTool/Models/
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdata/
