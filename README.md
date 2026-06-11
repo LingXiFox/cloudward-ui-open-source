@@ -21,7 +21,15 @@
 
 ## Beta 构建
 
-Release 中的 `Cloudward-beta-macos.zip` 是当前 macOS beta 构建包,可用于试用现阶段界面与流程。该构建仍处于 beta 阶段,请先在非关键文件上试用。
+Release 中的 `Cloudward-beta-2-macos.zip` 是当前 macOS beta 2 构建包,可用于试用现阶段界面与流程。该构建仍处于 prerelease 阶段,请先在非关键文件上试用。
+
+Beta 2 重点:
+
+- 修复 iCloud Drive 在 macOS 27 beta 上 Spotlight 元数据为空时首屏无内容的问题。
+- 增加后台文件系统索引兜底,目录会回填真实本地大小与 iCloud 聚合状态。
+- 增加索引/读取状态提示,避免界面只显示空表或长期“计算中”。
+- 移除同步状态页中的深色模式缩略验证 demo。
+- 优化释放后的涟漪反馈,避免仅云端行保留常驻动画源。
 
 ## 目录
 

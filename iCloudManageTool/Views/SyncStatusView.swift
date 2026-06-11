@@ -5,61 +5,57 @@ struct SyncStatusView: View {
     var state: CloudwardAppState
 
     var body: some View {
-        HStack(spacing: 24) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    TrafficDots()
-                    Text("同步状态")
-                        .font(.system(size: 16, weight: .semibold))
-                    Spacer()
-                    Text("最近活动 · \(state.syncActivityUpdatedText)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                StatusSection(title: transferSectionTitle, trailing: transferSectionTrailing) {
-                    if state.syncActivities.isEmpty {
-                        EmptyStatusRow(
-                            symbolName: "icloud",
-                            title: "当前没有活跃传输",
-                            detail: state.spotlightStatusMessage ?? "iCloud 元数据监听已启动，会在上传或下载时自动更新。"
-                        )
-                    } else {
-                        ForEach(state.syncActivities.prefix(5)) { item in
-                            TransferRow(item: item)
-                        }
-                    }
-                }
-
-                StatusSection(title: conflictSectionTitle, trailing: nil) {
-                    if state.visibleSyncConflicts.isEmpty {
-                        EmptyStatusRow(
-                            symbolName: "checkmark.circle.fill",
-                            title: "暂无冲突文件",
-                            detail: "检测到冲突版本时会在这里列出。"
-                        )
-                    } else {
-                        ForEach(state.visibleSyncConflicts.prefix(4)) { item in
-                            ConflictRow(item: item)
-                        }
-                    }
-                }
-
-                StatusSection(title: "健康自检", trailing: nil) {
-                    ForEach(state.syncHealthChecks) { check in
-                        HealthRow(check: check)
-                    }
-                }
-
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                TrafficDots()
+                Text("同步状态")
+                    .font(.system(size: 16, weight: .semibold))
                 Spacer()
+                Text("最近活动 · \(state.syncActivityUpdatedText)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(24)
-            .frame(width: 540)
-            .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(CloudwardColors.separator))
 
-            DarkModePreview()
+            StatusSection(title: transferSectionTitle, trailing: transferSectionTrailing) {
+                if state.syncActivities.isEmpty {
+                    EmptyStatusRow(
+                        symbolName: "icloud",
+                        title: "当前没有活跃传输",
+                        detail: state.spotlightStatusMessage ?? "iCloud 元数据监听已启动，会在上传或下载时自动更新。"
+                    )
+                } else {
+                    ForEach(state.syncActivities.prefix(5)) { item in
+                        TransferRow(item: item)
+                    }
+                }
+            }
+
+            StatusSection(title: conflictSectionTitle, trailing: nil) {
+                if state.visibleSyncConflicts.isEmpty {
+                    EmptyStatusRow(
+                        symbolName: "checkmark.circle.fill",
+                        title: "暂无冲突文件",
+                        detail: "检测到冲突版本时会在这里列出。"
+                    )
+                } else {
+                    ForEach(state.visibleSyncConflicts.prefix(4)) { item in
+                        ConflictRow(item: item)
+                    }
+                }
+            }
+
+            StatusSection(title: "健康自检", trailing: nil) {
+                ForEach(state.syncHealthChecks) { check in
+                    HealthRow(check: check)
+                }
+            }
+
+            Spacer()
         }
+        .padding(24)
+        .frame(maxWidth: 640, maxHeight: .infinity, alignment: .topLeading)
+        .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(CloudwardColors.separator))
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(CloudwardColors.moonWhite)
@@ -259,132 +255,5 @@ private struct EmptyStatusRow: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(CloudwardColors.separator.opacity(0.65)).frame(height: 0.5)
         }
-    }
-}
-
-private struct DarkModePreview: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("深色模式 · 主窗口缩略验证")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 0) {
-                HStack {
-                    TrafficDots()
-                    Spacer()
-                    Text("iCloud 云盘")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    Label("全部归云", systemImage: "icloud.fill")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .frame(height: 24)
-                        .background(Color(red: 0.55, green: 0.70, blue: 0.62), in: RoundedRectangle(cornerRadius: 6))
-                }
-                .padding(12)
-                .background(Color(red: 0.12, green: 0.13, blue: 0.14))
-
-                HStack(spacing: 0) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label("iCloud 云盘", systemImage: "icloud.fill")
-                        Label("Obsidian 容器", systemImage: "folder.fill")
-                        Divider()
-                        Label("大文件", systemImage: "list.bullet.rectangle")
-                        Label("沉睡文件", systemImage: "moon.fill")
-                        Label("同步状态", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(Color(red: 0.78, green: 0.83, blue: 0.86))
-                    .padding(14)
-                    .frame(width: 132, height: 250, alignment: .topLeading)
-                    .background(Color(red: 0.14, green: 0.18, blue: 0.17))
-
-                    VStack(spacing: 10) {
-                        CompactDarkBar()
-                        DarkRow(name: "影片素材", size: "48.2 GB", badge: "部分本地")
-                        DarkRow(name: "2025 拍摄", size: "22.6 GB", badge: "本地")
-                        DarkRow(name: "海岸线_4K_主机位.mov", size: "8.4 GB", badge: "本地有副本")
-                        DarkRow(name: "旧项目备份.zip", size: "0 KB", badge: "仅云端")
-                        Spacer()
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(red: 0.12, green: 0.13, blue: 0.14))
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.08)))
-
-            HStack(spacing: 12) {
-                ForEach([
-                    ("底色", "#1C1E21", Color(red: 0.11, green: 0.12, blue: 0.13)),
-                    ("卡片", "#26292D", Color(red: 0.15, green: 0.16, blue: 0.18)),
-                    ("文本", "#E6E9ED", Color(red: 0.90, green: 0.91, blue: 0.93)),
-                    ("次级", "#8B949C", Color(red: 0.55, green: 0.58, blue: 0.61)),
-                    ("青瓷", "#8FB39E", Color(red: 0.56, green: 0.70, blue: 0.62))
-                ], id: \.0) { item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(item.2)
-                            .frame(height: 26)
-                        Text(item.0)
-                            .font(.caption2)
-                        Text(item.1)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-private struct CompactDarkBar: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("本地占用")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            HStack {
-                Text("126.4")
-                    .font(.title.weight(.bold))
-                Text("GB")
-                    .font(.caption.weight(.bold))
-                Spacer()
-            }
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(red: 0.55, green: 0.70, blue: 0.62))
-                .frame(height: 7)
-        }
-        .padding(12)
-        .background(Color(red: 0.15, green: 0.16, blue: 0.18), in: RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-private struct DarkRow: View {
-    let name: String
-    let size: String
-    let badge: String
-
-    var body: some View {
-        HStack {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(Color(red: 0.55, green: 0.70, blue: 0.62))
-                .frame(width: 14, height: 14)
-            Text(name)
-            Spacer()
-            Text(size)
-                .foregroundStyle(.secondary)
-            Text(badge)
-                .font(.caption2)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.white.opacity(0.08), in: Capsule())
-        }
-        .font(.caption)
-        .foregroundStyle(Color(red: 0.90, green: 0.91, blue: 0.93))
     }
 }

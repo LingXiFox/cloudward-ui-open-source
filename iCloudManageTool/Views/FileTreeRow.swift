@@ -2,28 +2,35 @@ import AppKit
 import CloudwardCore
 import SwiftUI
 
-struct FileTreeRow: View {
-    @Bindable var state: CloudwardAppState
-    let node: FileNode
-    var depth = 0
+struct FileTreeRow: View, Equatable {
+    let model: FileTreeRowModel
+    let onToggleReleaseSelection: () -> Void
+    let onToggleExpansion: () -> Void
+    let onSelect: () -> Void
+    let onPresentRelease: () -> Void
+    let onDetectLock: () -> Void
+
+    static func == (lhs: FileTreeRow, rhs: FileTreeRow) -> Bool {
+        lhs.model == rhs.model
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            FileRowLabel(state: state, node: node, depth: depth)
+        Group {
+            if model.ref.isSkeleton {
+                SkeletonFileRow(depth: model.ref.depth)
+            } else {
+                FileRowLabel(
+                    model: model,
+                    onToggleReleaseSelection: onToggleReleaseSelection,
+                    onToggleExpansion: onToggleExpansion,
+                    onSelect: onSelect
+                )
                 .contextMenu {
-                    RowContextMenu(state: state, node: node)
-                }
-
-            if node.isDirectory, state.expandedDirectories.contains(node.url) {
-                if state.loadingDirectories.contains(node.url),
-                   state.childrenByParent[node.url] == nil {
-                    ForEach(0..<4, id: \.self) { _ in
-                        SkeletonFileRow(depth: depth + 1)
-                    }
-                }
-
-                ForEach(state.children(of: node.url)) { child in
-                    FileTreeRow(state: state, node: child, depth: depth + 1)
+                    RowContextMenu(
+                        ref: model.ref,
+                        onPresentRelease: onPresentRelease,
+                        onDetectLock: onDetectLock
+                    )
                 }
             }
         }
@@ -31,18 +38,19 @@ struct FileTreeRow: View {
 }
 
 private struct FileRowLabel: View {
-    @Bindable var state: CloudwardAppState
-    let node: FileNode
-    let depth: Int
+    let model: FileTreeRowModel
+    let onToggleReleaseSelection: () -> Void
+    let onToggleExpansion: () -> Void
+    let onSelect: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                state.toggleReleaseSelection(for: node)
+                onToggleReleaseSelection()
             } label: {
-                Image(systemName: state.releaseSelectionState(for: node).symbolName)
+                Image(systemName: model.selectionState.symbolName)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(checkboxColor)
                     .font(.system(size: 15, weight: .semibold))
@@ -50,14 +58,16 @@ private struct FileRowLabel: View {
             .buttonStyle(.plain)
             .frame(width: 24, height: 24)
             .contentShape(Rectangle())
-            .symbolEffect(.bounce, value: state.releaseSelectionState(for: node))
+            .symbolEffect(.bounce, value: model.selectionState)
 
             disclosureControl
 
             HStack(spacing: 10) {
                 HStack(spacing: 8) {
                     ZStack {
-                        CloudRippleView(isActive: node.cloudStatus == .evicted || node.cloudStatus == .allEvicted, reduceMotion: reduceMotion)
+                        if model.isRippling {
+                            CloudRippleView(reduceMotion: reduceMotion)
+                        }
                         Image(systemName: iconName)
                             .foregroundStyle(iconColor)
                             .frame(width: 18)
@@ -65,42 +75,46 @@ private struct FileRowLabel: View {
                     }
                     .frame(width: 28, height: 28)
 
-                    Text(node.name)
+                    Text(model.ref.name)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(node.localAllocatedBytes.cloudwardBytes)
+                Text(localSizeText)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .frame(width: 104, alignment: .trailing)
 
-                StatusBadge(status: node.cloudStatus, directoryCounts: node.directoryCounts)
+                StatusBadge(
+                    status: model.ref.cloudStatus,
+                    directoryCounts: model.ref.directoryCounts,
+                    isPendingDirectorySummary: isDirectorySummaryPending
+                )
                     .frame(width: 110, alignment: .leading)
 
-                OccupancyIndicator(lockState: lockState, isSyncBlocked: node.cloudStatus.isSyncBlocked)
+                OccupancyIndicator(lockState: model.lockState, isSyncBlocked: model.ref.cloudStatus.isSyncBlocked)
                     .frame(width: 36)
             }
             .contentShape(Rectangle())
             .overlay {
                 ClickGestureBridge {
-                    state.selectNode(node)
+                    onSelect()
                 } onDoubleClick: {
-                    guard node.isDirectory else {
+                    guard model.ref.isDirectory else {
                         return
                     }
 
-                    state.setExpanded(!state.expandedDirectories.contains(node.url), for: node.url)
+                    onToggleExpansion()
                 }
             }
         }
-        .padding(.leading, CGFloat(depth) * 18 + 14)
+        .padding(.leading, CGFloat(model.ref.depth) * 18 + 14)
         .padding(.trailing, 14)
         .frame(height: 32)
         .contentShape(Rectangle())
         .background {
-            if state.selectedNode?.id == node.id {
+            if model.isSelected {
                 CloudwardColors.selectedRow
             } else if isHovered {
                 CloudwardColors.rowHover
@@ -113,32 +127,32 @@ private struct FileRowLabel: View {
         }
         .onHover { isHovered = $0 }
         .animation(reduceMotion ? .default : Motion.standard, value: isHovered)
-        .animation(reduceMotion ? .default : Motion.standard, value: node.cloudStatus)
+        .animation(reduceMotion ? .default : Motion.standard, value: model.ref.cloudStatus)
     }
 
     @ViewBuilder
     private var disclosureControl: some View {
-        if node.isDirectory {
+        if model.ref.isDirectory {
             Button {
-                state.setExpanded(!state.expandedDirectories.contains(node.url), for: node.url)
+                onToggleExpansion()
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
-                    .rotationEffect(.degrees(state.expandedDirectories.contains(node.url) ? 90 : 0))
-                    .animation(reduceMotion ? nil : Motion.standard, value: state.expandedDirectories.contains(node.url))
+                    .rotationEffect(.degrees(model.isExpanded ? 90 : 0))
+                    .animation(reduceMotion ? nil : Motion.standard, value: model.isExpanded)
             }
             .buttonStyle(.plain)
             .contentShape(Rectangle())
-            .help(state.expandedDirectories.contains(node.url) ? "折叠" : "展开")
+            .help(model.isExpanded ? "折叠" : "展开")
         } else {
             Color.clear.frame(width: 24, height: 24)
         }
     }
 
     private var checkboxColor: Color {
-        switch state.releaseSelectionState(for: node) {
+        switch model.selectionState {
         case .none:
             CloudwardColors.cloudGray
         case .partial, .selected:
@@ -147,25 +161,28 @@ private struct FileRowLabel: View {
     }
 
     private var iconName: String {
-        if node.cloudStatus == .evicted || node.cloudStatus == .allEvicted {
+        if model.ref.cloudStatus == .evicted || model.ref.cloudStatus == .allEvicted {
             return "icloud"
         }
 
-        return node.isDirectory ? "folder.fill" : "doc.fill"
+        return model.ref.isDirectory ? "folder.fill" : "doc.fill"
     }
 
     private var iconColor: Color {
-        if node.cloudStatus == .evicted || node.cloudStatus == .allEvicted {
+        if model.ref.cloudStatus == .evicted || model.ref.cloudStatus == .allEvicted {
             return CloudwardColors.cloudGray
         }
 
-        return node.isDirectory ? CloudwardColors.celadon : CloudwardColors.inkBlue
+        return model.ref.isDirectory ? CloudwardColors.celadon : CloudwardColors.inkBlue
     }
 
-    private var lockState: NodeLockState {
-        state.lockState(for: node)
+    private var localSizeText: String {
+        isDirectorySummaryPending ? "计算中…" : model.ref.localAllocatedBytes.cloudwardBytes
     }
 
+    private var isDirectorySummaryPending: Bool {
+        model.ref.isDirectory && model.ref.directoryCounts == nil && model.ref.cloudStatus == .unknown
+    }
 }
 
 private struct OccupancyIndicator: View {
@@ -205,10 +222,13 @@ private struct OccupancyIndicator: View {
 private struct StatusBadge: View {
     let status: CloudStatus
     var directoryCounts: DirectoryCloudCounts?
+    var isPendingDirectorySummary = false
 
     var body: some View {
         Group {
-            if status == .empty {
+            if isPendingDirectorySummary {
+                Label(title, systemImage: "clock")
+            } else if status == .empty {
                 Text(title)
             } else {
                 Label(title, systemImage: symbolName)
@@ -224,7 +244,11 @@ private struct StatusBadge: View {
     }
 
     private var title: String {
-        status.displayName
+        if isPendingDirectorySummary {
+            return "计算中…"
+        }
+
+        return status.displayName
     }
 
     private var symbolName: String {
@@ -253,26 +277,33 @@ private struct StatusBadge: View {
     }
 
     private var color: Color {
+        if isPendingDirectorySummary {
+            return .secondary
+        }
+
         switch status {
         case .localCopy, .allLocal, .partiallyLocal:
-            CloudwardColors.celadon
+            return CloudwardColors.celadon
         case .evicted, .allEvicted, .empty:
-            CloudwardColors.cloudGray
+            return CloudwardColors.cloudGray
         case .uploading, .notUploaded, .conflict:
-            CloudwardColors.amber
+            return CloudwardColors.amber
         case .downloading, .unknown:
-            .secondary
+            return .secondary
         }
     }
 }
 
 private struct RowContextMenu: View {
-    var state: CloudwardAppState
-    let node: FileNode
+    let ref: NodeRef
+    let onPresentRelease: () -> Void
+    let onDetectLock: () -> Void
 
     var body: some View {
         Button {
-            NSWorkspace.shared.activateFileViewerSelecting([node.url])
+            if let url = ref.url {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
         } label: {
             Label("在访达中显示", systemImage: "finder")
         }
@@ -286,14 +317,14 @@ private struct RowContextMenu: View {
         Divider()
 
         Button {
-            state.presentReleasePreview(for: node)
+            onPresentRelease()
         } label: {
             Label("立即释放", systemImage: "icloud.and.arrow.up")
         }
-        .disabled(node.localAllocatedBytes <= 0)
+        .disabled(ref.localAllocatedBytes <= 0)
 
         Button {
-            state.detectLock(for: node)
+            onDetectLock()
         } label: {
             Label("检测占用", systemImage: "lock")
         }

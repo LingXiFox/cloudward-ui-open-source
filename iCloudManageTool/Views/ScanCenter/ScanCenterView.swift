@@ -54,7 +54,7 @@ struct ScanCenterView: View {
         case .redundantFiles:
             "基于命名和结构启发式识别临时、冲突和开发产物。"
         default:
-            "共用同一份 TreeIndexer 索引。"
+            "共用同一份 Spotlight 快照索引。"
         }
     }
 }

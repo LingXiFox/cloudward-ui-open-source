@@ -89,7 +89,7 @@ private struct TreemapPreview: View {
             ]
 
             if slices.isEmpty {
-                PlaceholderPage(symbolName: "square.grid.3x3", title: "等待索引", message: "TreeIndexer 完成后会显示目录面积图。")
+                PlaceholderPage(symbolName: "square.grid.3x3", title: "等待索引", message: "Spotlight 快照索引完成后会显示目录面积图。")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ZStack(alignment: .topLeading) {

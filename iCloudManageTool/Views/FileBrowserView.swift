@@ -138,54 +138,64 @@ private struct CompactOverviewCard: View {
     @AppStorage("icloudPlanCapacityHintDismissed") private var capacityHintDismissed = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 20) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("本地占用")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ByteValueText(bytes: state.localBytesInCurrentRoot)
-                HStack(spacing: 8) {
-                    Text(overviewText)
-                        .font(.caption)
-                        .foregroundStyle(CloudwardColors.celadon)
-                        .lineLimit(1)
-                        .help(overviewHelp)
-
-                    if shouldShowCapacityHint {
-                        Button("设置套餐容量") {
-                            openSettings()
-                        }
-                        .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("本地占用")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(CloudwardColors.celadon)
-                        .help("容量为手动设置,可在设置中修改")
+                        .foregroundStyle(.secondary)
+                    ByteValueText(bytes: state.localBytesInCurrentRoot)
+                    HStack(spacing: 8) {
+                        Text(overviewText)
+                            .font(.caption)
+                            .foregroundStyle(CloudwardColors.celadon)
+                            .lineLimit(1)
+                            .help(overviewHelp)
 
-                        Button {
-                            capacityHintDismissed = true
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.secondary)
+                        if shouldShowCapacityHint {
+                            Button("设置套餐容量") {
+                                openSettings()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CloudwardColors.celadon)
+                            .help("容量为手动设置,可在设置中修改")
+
+                            Button {
+                                capacityHintDismissed = true
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("不再提示")
                         }
-                        .buttonStyle(.plain)
-                        .help("不再提示")
                     }
                 }
+
+                UsageStackedBar(stats: state.usageCategoryStats)
+                    .frame(maxWidth: .infinity)
+
+                Button {
+                    state.sidebarSelection = .spaceAnalysis
+                    state.startIndexScanIfNeeded()
+                } label: {
+                    Image(systemName: "chart.pie")
+                        .frame(width: 32, height: 32)
+                        .background(CloudwardColors.panel, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .help("查看空间分析")
             }
 
-            UsageStackedBar(stats: state.usageCategoryStats)
-                .frame(maxWidth: .infinity)
-
-            Button {
-                state.sidebarSelection = .spaceAnalysis
-                state.startIndexScanIfNeeded()
-            } label: {
-                Image(systemName: "chart.pie")
-                    .frame(width: 32, height: 32)
-                    .background(CloudwardColors.panel, in: RoundedRectangle(cornerRadius: 8))
+            if state.fileBrowserShowsStatusBanner {
+                IndexProgressStrip(
+                    title: state.fileBrowserStatusTitle,
+                    detail: state.fileBrowserStatusDetail,
+                    showsProgress: state.fileBrowserShowsProgress
+                )
             }
-            .buttonStyle(.plain)
-            .help("查看空间分析")
         }
         .padding(16)
         .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 12))
@@ -232,6 +242,41 @@ private struct CompactOverviewCard: View {
 
     private var shouldShowCapacityHint: Bool {
         planCapacityBytes == nil && capacityHintDismissed == false
+    }
+}
+
+private struct IndexProgressStrip: View {
+    let title: String
+    let detail: String
+    let showsProgress: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(CloudwardColors.celadon)
+            } else {
+                Image(systemName: "exclamationmark.magnifyingglass")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(CloudwardColors.amber)
+                    .frame(width: 16)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CloudwardColors.inkBlue)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(CloudwardColors.panel.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -387,24 +432,85 @@ private struct FileTableCard: View {
 
             Divider()
 
-            if state.loadingDirectories.contains(rootURL),
-               state.childrenByParent[rootURL] == nil {
-                VStack(spacing: 0) {
-                    ForEach(0..<6, id: \.self) { _ in
-                        SkeletonFileRow()
-                    }
+            LazyVStack(spacing: 0) {
+                ForEach(state.visibleRows) { row in
+                    FileTreeRow(
+                        model: row,
+                        onToggleReleaseSelection: {
+                            state.toggleReleaseSelection(forNodeID: row.id)
+                        },
+                        onToggleExpansion: {
+                            state.toggleExpanded(forNodeID: row.id)
+                        },
+                        onSelect: {
+                            state.selectNode(id: row.id)
+                        },
+                        onPresentRelease: {
+                            state.presentReleasePreview(forNodeID: row.id)
+                        },
+                        onDetectLock: {
+                            state.detectLock(forNodeID: row.id)
+                        }
+                    )
+                    .equatable()
                 }
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(state.children(of: rootURL)) { node in
-                        FileTreeRow(state: state, node: node, depth: 0)
-                    }
+
+                if state.visibleRows.isEmpty {
+                    FileTableEmptyState(
+                        title: state.fileBrowserStatusTitle,
+                        detail: state.fileBrowserStatusDetail,
+                        showsProgress: state.fileBrowserShowsProgress,
+                        onRetry: {
+                            state.reloadCurrentRoot()
+                            state.startIndexScan()
+                        }
+                    )
                 }
             }
         }
         .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.04), radius: 10, y: 4)
+    }
+}
+
+private struct FileTableEmptyState: View {
+    let title: String
+    let detail: String
+    let showsProgress: Bool
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(CloudwardColors.celadon)
+            } else {
+                Image(systemName: "folder")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(CloudwardColors.inkBlue)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button("重新读取") {
+                onRetry()
+            }
+            .controlSize(.small)
+            .buttonStyle(.bordered)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 180)
     }
 }
 
@@ -435,10 +541,12 @@ struct SkeletonFileRow: View {
         .padding(.trailing, 14)
         .frame(height: 32)
         .opacity(phase ? 0.42 : 0.9)
+        .animation(phase ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : nil, value: phase)
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                phase = true
-            }
+            phase = true
+        }
+        .onDisappear {
+            phase = false
         }
     }
 }
