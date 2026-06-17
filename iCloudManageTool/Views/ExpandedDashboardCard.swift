@@ -21,7 +21,7 @@ struct ExpandedDashboardCard: View {
 
                 Spacer()
 
-                Text("矩形面积 = 目录本地占用 · 点击下钻")
+                Text("圆环代表此分类在整体占比")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -38,10 +38,7 @@ struct ExpandedDashboardCard: View {
             }
 
             HStack(alignment: .top, spacing: 16) {
-                TreemapPreview(directories: state.topDirectoryStats) { directory in
-                    state.revealDirectoryInTree(directory)
-                }
-                    .frame(minHeight: 390)
+                CategoryPieChart(stats: state.indexCategoryStats, totalBytes: state.spaceAnalysisLocalBytes)
 
                 VStack(spacing: 12) {
                     ContainerUsageCard(stats: state.indexContainerStats)
@@ -66,155 +63,201 @@ struct ExpandedDashboardCard: View {
     }
 }
 
-private struct TreemapPreview: View {
-    let directories: [IndexedDirectoryStat]
-    let onSelectDirectory: (IndexedDirectoryStat) -> Void
+private struct CategoryPieChart: View {
+    let stats: [IndexedCategoryStat]
+    let totalBytes: Int64
 
-    private var displayNodes: [IndexedDirectoryStat] {
-        directories
+    @State private var hoveredCategory: IndexedFileCategory?
+
+    private let innerRadiusFraction: CGFloat = 0.58
+    private let hoverOutset: CGFloat = 14
+
+    private var validStats: [IndexedCategoryStat] {
+        stats.filter { $0.bytes > 0 }
+    }
+
+    private var total: Double {
+        Double(max(validStats.reduce(Int64(0)) { $0 + $1.bytes }, 1))
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            let slices = TreemapLayout.makeSlices(
-                for: displayNodes,
-                in: CGRect(origin: .zero, size: proxy.size)
-            )
-            let colors = [
-                CloudwardColors.celadon.opacity(0.28),
-                Color.blue.opacity(0.15),
-                CloudwardColors.amber.opacity(0.15),
-                CloudwardColors.vermilionMist.opacity(0.12),
-                CloudwardColors.cloudGray.opacity(0.16)
-            ]
-
-            if slices.isEmpty {
-                PlaceholderPage(symbolName: "square.grid.3x3", title: "等待索引", message: "Spotlight 快照索引完成后会显示目录面积图。")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(slices.enumerated()), id: \.element.id) { index, slice in
-                        TreemapBlock(
-                            directory: slice.directory,
-                            color: colors[index % colors.count]
-                        ) {
-                            onSelectDirectory(slice.directory)
-                        }
-                        .frame(width: slice.rect.width, height: slice.rect.height)
-                        .position(x: slice.rect.midX, y: slice.rect.midY)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct TreemapBlock: View {
-    let directory: IndexedDirectoryStat
-    let color: Color
-    let action: () -> Void
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
+        VStack(spacing: 12) {
             GeometryReader { proxy in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(directory.name)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(CloudwardColors.inkBlue)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                let diameter = min(proxy.size.width, proxy.size.height) * 0.72
+                let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                let radius = diameter / 2
+                let innerR = radius * innerRadiusFraction
+                let chartSide = diameter + hoverOutset * 2
+                let chartCenter = CGPoint(x: chartSide / 2, y: chartSide / 2)
 
-                    Text(directory.bytes.cloudwardBytes)
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                ZStack {
+                    ForEach(Array(validStats.enumerated()), id: \.element.id) { index, stat in
+                        let start = startAngle(for: index)
+                        let end = endAngle(for: index)
+                        let isHovered = hoveredCategory == stat.category
+                        let mid = Angle.degrees((start.degrees + end.degrees) / 2)
 
-                    if proxy.size.height > 58 {
-                        Spacer()
-                        Text("\(directory.count) 项 · \(directory.containerName)")
-                            .font(.caption2)
+                        let scale: CGFloat = isHovered ? 1.06 : 1.0
+                        let dx: CGFloat = isHovered ? cos(CGFloat(mid.radians)) * 6 : 0
+                        let dy: CGFloat = isHovered ? sin(CGFloat(mid.radians)) * 6 : 0
+
+                        PieArc(startAngle: start, endAngle: end, innerRadius: innerR)
+                            .fill(stat.category.color)
+                            .frame(width: diameter, height: diameter)
+                            .scaleEffect(scale)
+                            .offset(x: dx, y: dy)
+                            .zIndex(isHovered ? 1 : 0)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hoveredCategory)
+
+                        if stat.fraction > 0.08 {
+                            let labelR = radius * 0.76
+                            let x = cos(CGFloat(mid.radians)) * labelR
+                            let y = sin(CGFloat(mid.radians)) * labelR
+                            Text(String(format: "%.0f%%", stat.fraction * 100))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.35), radius: 1, y: 1)
+                                .position(x: chartCenter.x + x + dx, y: chartCenter.y + y + dy)
+                                .zIndex(isHovered ? 2 : 1)
+                                .allowsHitTesting(false)
+                        }
+                    }
+
+                    Circle()
+                        .fill(CloudwardColors.card)
+                        .frame(width: diameter * innerRadiusFraction)
+                        .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+                        .allowsHitTesting(false)
+                        .zIndex(3)
+
+                    VStack(spacing: 2) {
+                        ByteValueText(bytes: totalBytes)
+                        Text("\(validStats.count) 个分类")
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+                    }
+                    .allowsHitTesting(false)
+                    .zIndex(4)
+
+                    Color.clear
+                        .frame(width: chartSide, height: chartSide)
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                hoveredCategory = category(at: location, center: chartCenter, outerRadius: radius + hoverOutset, innerRadius: innerR)
+                            case .ended:
+                                hoveredCategory = nil
+                            }
+                        }
+                        .zIndex(5)
+                }
+                .frame(width: chartSide, height: chartSide)
+                .position(center)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 4
+            ) {
+                ForEach(validStats) { stat in
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(stat.category.color)
+                            .frame(width: 9, height: 9)
+                        Text(stat.category.title)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(CloudwardColors.inkBlue)
                             .lineLimit(1)
-                            .truncationMode(.middle)
+                        Spacer()
+                        Text(stat.bytes.cloudwardBytes)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(hoveredCategory == stat.category
+                                  ? CloudwardColors.celadon.opacity(0.12)
+                                  : Color.clear)
+                    )
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hoveredCategory)
+                    .onHover { hovering in
+                        hoveredCategory = hovering ? stat.category : nil
                     }
                 }
-                .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
-        .buttonStyle(.plain)
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .background(color, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.28)))
-        .shadow(color: .black.opacity(isHovered ? 0.08 : 0), radius: 8, y: 3)
-        .onHover { isHovered = $0 }
-        .help("定位到 \(directory.name)")
-    }
-}
-
-private struct TreemapSlice: Identifiable {
-    let directory: IndexedDirectoryStat
-    let rect: CGRect
-
-    var id: String { directory.id }
-}
-
-private enum TreemapLayout {
-    static func makeSlices(for directories: [IndexedDirectoryStat], in rect: CGRect) -> [TreemapSlice] {
-        let items = directories
-            .filter { $0.bytes > 0 }
-            .sorted { $0.bytes > $1.bytes }
-
-        guard items.isEmpty == false, rect.width > 0, rect.height > 0 else {
-            return []
-        }
-
-        return slice(items: items, rect: rect, depth: 0)
+        .frame(minHeight: 390)
     }
 
-    private static func slice(items: [IndexedDirectoryStat], rect: CGRect, depth: Int) -> [TreemapSlice] {
-        if items.count == 1 {
-            return [TreemapSlice(directory: items[0], rect: rect.insetBy(dx: 3, dy: 3))]
+    private func startAngle(for index: Int) -> Angle {
+        let precedingSum = validStats.prefix(index).reduce(0.0) { $0 + Double($1.bytes) }
+        let fraction = precedingSum / total
+        return Angle.degrees(360 * fraction - 90)
+    }
+
+    private func endAngle(for index: Int) -> Angle {
+        let includingSum = validStats.prefix(index + 1).reduce(0.0) { $0 + Double($1.bytes) }
+        let fraction = includingSum / total
+        return Angle.degrees(360 * fraction - 90)
+    }
+
+    private func category(at location: CGPoint, center: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat) -> IndexedFileCategory? {
+        let dx = location.x - center.x
+        let dy = location.y - center.y
+        let distance = hypot(dx, dy)
+
+        guard distance >= innerRadius, distance <= outerRadius else {
+            return nil
         }
 
-        let total = max(items.reduce(Int64(0)) { $0 + $1.bytes }, 1)
-        let splitTarget = Double(total) / 2
-        var leading: [IndexedDirectoryStat] = []
-        var leadingBytes: Int64 = 0
-        var trailing: [IndexedDirectoryStat] = []
+        var progress = (atan2(dy, dx) + .pi / 2) / (2 * .pi)
+        if progress < 0 {
+            progress += 1
+        }
 
-        for item in items {
-            if leading.isEmpty || Double(leadingBytes) < splitTarget {
-                leading.append(item)
-                leadingBytes += item.bytes
-            } else {
-                trailing.append(item)
+        var accumulated = 0.0
+        for stat in validStats {
+            accumulated += Double(stat.bytes) / total
+            if progress <= accumulated {
+                return stat.category
             }
         }
 
-        if trailing.isEmpty, let last = leading.popLast() {
-            trailing = [last]
-            leadingBytes -= last.bytes
-        }
+        return validStats.last?.category
+    }
+}
 
-        guard leading.isEmpty == false, trailing.isEmpty == false else {
-            return items.map { TreemapSlice(directory: $0, rect: rect.insetBy(dx: 3, dy: 3)) }
-        }
+private struct PieArc: Shape {
+    let startAngle: Angle
+    let endAngle: Angle
+    let innerRadius: CGFloat
 
-        let fraction = CGFloat(Double(max(leadingBytes, 1)) / Double(total))
-        if rect.width >= rect.height {
-            let leadingWidth = rect.width * fraction
-            let leadingRect = CGRect(x: rect.minX, y: rect.minY, width: leadingWidth, height: rect.height)
-            let trailingRect = CGRect(x: leadingRect.maxX, y: rect.minY, width: rect.width - leadingWidth, height: rect.height)
-            return slice(items: leading, rect: leadingRect, depth: depth + 1)
-                + slice(items: trailing, rect: trailingRect, depth: depth + 1)
-        } else {
-            let leadingHeight = rect.height * fraction
-            let leadingRect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: leadingHeight)
-            let trailingRect = CGRect(x: rect.minX, y: leadingRect.maxY, width: rect.width, height: rect.height - leadingHeight)
-            return slice(items: leading, rect: leadingRect, depth: depth + 1)
-                + slice(items: trailing, rect: trailingRect, depth: depth + 1)
-        }
+    nonisolated func path(in rect: CGRect) -> Path {
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outerRadius = min(rect.width, rect.height) / 2
+        var path = Path()
+
+        path.addArc(
+            center: center,
+            radius: outerRadius,
+            startAngle: startAngle,
+            endAngle: endAngle,
+            clockwise: false
+        )
+
+        path.addArc(
+            center: center,
+            radius: innerRadius,
+            startAngle: endAngle,
+            endAngle: startAngle,
+            clockwise: true
+        )
+
+        path.closeSubpath()
+        return path
     }
 }
 

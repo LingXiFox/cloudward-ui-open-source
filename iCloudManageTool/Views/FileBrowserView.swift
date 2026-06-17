@@ -152,6 +152,17 @@ private struct CompactOverviewCard: View {
                             .lineLimit(1)
                             .help(overviewHelp)
 
+                        if let snapshotAgeText = state.snapshotAgeText {
+                            Text(snapshotAgeText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(CloudwardColors.inkBlue)
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(CloudwardColors.panel, in: Capsule())
+                                .help("正在用上次快照显示文件树，最新索引完成后会自动调和")
+                        }
+
                         if shouldShowCapacityHint {
                             Button("设置套餐容量") {
                                 openSettings()
@@ -453,6 +464,12 @@ private struct FileTableCard: View {
                         }
                     )
                     .equatable()
+                    .onAppear {
+                        state.visibleRowAppeared(id: row.id)
+                    }
+                    .onDisappear {
+                        state.visibleRowDisappeared(id: row.id)
+                    }
                 }
 
                 if state.visibleRows.isEmpty {

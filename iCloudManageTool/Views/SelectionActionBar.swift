@@ -30,7 +30,7 @@ struct SelectionActionBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .glassEffect()
         .shadow(radius: 18, y: 6)
     }
 }

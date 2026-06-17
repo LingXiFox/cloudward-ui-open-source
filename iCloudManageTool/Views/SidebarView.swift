@@ -71,7 +71,7 @@ struct SidebarView: View {
         }
         .background {
             ZStack {
-                Rectangle().fill(.ultraThinMaterial)
+                CloudwardColors.panel
                 LinearGradient(
                     colors: [
                         CloudwardColors.celadon.opacity(0.18),

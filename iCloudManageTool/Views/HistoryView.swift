@@ -160,7 +160,7 @@ private struct HistoryRow: View {
                 Text(record.releasedBytes.cloudwardBytes)
                     .font(.system(size: 14, weight: .semibold).monospacedDigit())
                     .foregroundStyle(CloudwardColors.celadon)
-                Text("\(record.succeeded) 成功 · \(record.skipped) 跳过 · \(record.failed) 失败")
+                Text("\(record.selectedCount) 选择 · \(record.fileCount) 驱逐 · \(record.skipped) 跳过 · \(record.failed) 失败")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

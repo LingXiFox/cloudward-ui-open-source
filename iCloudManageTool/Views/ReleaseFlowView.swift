@@ -36,6 +36,9 @@ private struct ReleaseProgressPanel: View {
             releaseLog
                 .padding(.top, 28)
 
+            currentFileLine
+                .padding(.top, 14)
+
             Spacer()
 
             Text("文件保留在 iCloud,本地仅移除缓存副本 · 可随时重新下载")
@@ -48,7 +51,8 @@ private struct ReleaseProgressPanel: View {
         .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(CloudwardColors.separator))
         .animation(reduceMotion ? .default : Motion.standard, value: state.releasePhase)
-        .animation(reduceMotion ? .default : Motion.standard, value: state.releaseFreedBytes)
+        .animation(reduceMotion ? .default : .linear(duration: 0.1), value: state.releaseFreedBytes)
+        .animation(reduceMotion ? .default : .linear(duration: 0.1), value: state.releaseProcessedEvents)
     }
 
     private var header: some View {
@@ -60,7 +64,7 @@ private struct ReleaseProgressPanel: View {
                 .foregroundStyle(.secondary)
             Spacer()
 
-            if state.releasePhase == .running {
+            if state.releasePhase == .preparing || state.releasePhase == .running {
                 Button("取消") {
                     state.cancelRelease()
                 }
@@ -80,6 +84,8 @@ private struct ReleaseProgressPanel: View {
         switch state.releasePhase {
         case .ready:
             "准备归云"
+        case .preparing:
+            "正在准备"
         case .running:
             "正在归云"
         case .finished:
@@ -100,7 +106,7 @@ private struct ReleaseProgressPanel: View {
                     style: StrokeStyle(lineWidth: 14, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .animation(reduceMotion ? .default : Motion.standard, value: state.releaseProgressFraction)
+                .animation(reduceMotion ? .default : .linear(duration: 0.1), value: state.releaseProgressFraction)
 
             VStack(spacing: 6) {
                 Text(ringCaption)
@@ -118,6 +124,8 @@ private struct ReleaseProgressPanel: View {
         switch state.releasePhase {
         case .ready:
             "预计释放"
+        case .preparing:
+            "准备中"
         case .running:
             "已释放"
         case .finished:
@@ -131,6 +139,8 @@ private struct ReleaseProgressPanel: View {
         switch state.releasePhase {
         case .ready:
             state.releaseEstimatedBytes
+        case .preparing:
+            state.releaseEstimatedBytes
         case .running, .finished, .cancelled:
             state.releaseFreedBytes
         }
@@ -140,10 +150,12 @@ private struct ReleaseProgressPanel: View {
         switch state.releasePhase {
         case .ready:
             "\(state.releaseTargetURLs.count) 个入口 · \(state.releasePreviewCount) 个文件"
+        case .preparing:
+            "准备中 \(state.releasePreparationProcessed)/\(max(state.releasePreparationTotal, 1))"
         case .running:
             "\(Int(state.releaseProgressFraction * 100))% · \(state.releaseProcessedEvents)/\(max(state.releaseTotal, 1))"
         case .finished:
-            "已处理 \(state.releaseSummary?.completedCount ?? state.releaseProcessedEvents) 项"
+            "驱逐 \(state.releaseSummary?.total ?? state.releaseTotal) · 跳过 \(state.releaseSummary?.skipped ?? state.releaseSkippedCount)"
         case .cancelled:
             "任务已停止"
         }
@@ -159,7 +171,7 @@ private struct ReleaseProgressPanel: View {
                     tint: CloudwardColors.celadon
                 )
             } else {
-                ForEach(state.releaseLogLines.prefix(6)) { line in
+                ForEach(state.releaseLogLines.reversed().prefix(6)) { line in
                     ReleaseFileLine(
                         symbol: line.kind.symbolName,
                         text: line.title,
@@ -172,6 +184,33 @@ private struct ReleaseProgressPanel: View {
         }
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? .default : Motion.standard, value: state.releaseLogLines.count)
+    }
+
+    private var currentFileLine: some View {
+        HStack(spacing: 8) {
+            Image(systemName: state.releasePhase == .finished ? "checkmark.circle" : "doc")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(state.releasePhase == .finished ? CloudwardColors.celadon : CloudwardColors.cloudGray)
+                .frame(width: 16)
+            Text("当前文件")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(currentFileText)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(CloudwardColors.inkBlue)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+        }
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+
+    private var currentFileText: String {
+        if state.releasePhase == .finished {
+            return "完成"
+        }
+
+        return state.releaseCurrentFileName ?? "等待开始"
     }
 }
 
@@ -242,6 +281,8 @@ private struct ReleaseSummaryPanel: View {
         switch state.releasePhase {
         case .ready:
             "icloud.and.arrow.up"
+        case .preparing:
+            "hourglass"
         case .running:
             "arrow.triangle.2.circlepath.icloud"
         case .finished:
@@ -259,6 +300,8 @@ private struct ReleaseSummaryPanel: View {
         switch state.releasePhase {
         case .ready:
             "确认归云"
+        case .preparing:
+            "正在准备"
         case .running:
             "归云进行中"
         case .finished:
@@ -272,6 +315,8 @@ private struct ReleaseSummaryPanel: View {
         switch state.releasePhase {
         case .ready:
             "将移除本地缓存副本,云端文件仍然保留"
+        case .preparing:
+            "正在筛选无需处理的云端项"
         case .running:
             "正在按事件流更新释放进度"
         case .finished:
@@ -285,7 +330,8 @@ private struct ReleaseSummaryPanel: View {
         VStack(spacing: 0) {
             SummaryRow(title: "预计释放空间", value: state.releaseEstimatedBytes.cloudwardBytes, tint: CloudwardColors.celadon)
             SummaryRow(title: "已释放空间", value: state.releaseFreedBytes.cloudwardBytes, tint: CloudwardColors.celadon)
-            SummaryRow(title: "归云入口", value: "\(state.releaseTargetURLs.count) 个")
+            SummaryRow(title: "选择项目", value: "\(state.releaseSelectedCount) 个")
+            SummaryRow(title: "计划驱逐", value: "\(state.releaseTotal) 个")
             SummaryRow(title: "处理结果", value: resultText, tint: state.releaseSummary == nil ? CloudwardColors.inkBlue : CloudwardColors.amber)
         }
         .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 9))
@@ -294,10 +340,14 @@ private struct ReleaseSummaryPanel: View {
 
     private var resultText: String {
         guard let summary = state.releaseSummary else {
-            return "\(state.releaseProcessedEvents)/\(max(state.releaseTotal, 1))"
+            if state.releasePhase == .preparing {
+                return "准备 \(state.releasePreparationProcessed)/\(max(state.releasePreparationTotal, 1))"
+            }
+
+            return "\(state.releaseProcessedEvents)/\(max(state.releaseTotal, 1)) · 跳过 \(state.releaseSkippedCount)"
         }
 
-        return "\(summary.succeeded) 成功 · \(summary.skipped) 跳过 · \(summary.failed) 失败"
+        return "\(summary.total) 驱逐 · \(summary.skipped) 跳过 · \(summary.failed) 失败"
     }
 
     private var detailCard: some View {
@@ -331,6 +381,17 @@ private struct ReleaseSummaryPanel: View {
                     ForEach(state.releaseIssueDetails.prefix(4)) { issue in
                         ReleaseIssueRow(issue: issue)
                     }
+                    if state.releaseIssueOverflowCount > 0 {
+                        HStack(spacing: 8) {
+                            Image(systemName: "ellipsis.circle")
+                                .foregroundStyle(CloudwardColors.amber)
+                            Text("另有 \(state.releaseIssueOverflowCount) 项,见诊断日志导出")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(10)
+                    }
                 }
                 .background(CloudwardColors.card, in: RoundedRectangle(cornerRadius: 8))
             }
@@ -352,13 +413,15 @@ private struct ReleaseSummaryPanel: View {
     }
 
     private var detailTitle: String {
-        state.releaseLogLines.first?.title ?? state.releaseTargetURLs.first?.lastPathComponent ?? "等待归云任务"
+        state.releaseLogLines.last?.title ?? state.releaseTargetURLs.first?.lastPathComponent ?? "等待归云任务"
     }
 
     private var detailValue: String {
         switch state.releasePhase {
         case .ready:
             "未开始"
+        case .preparing:
+            "\(state.releasePreparationProcessed)/\(max(state.releasePreparationTotal, 1))"
         case .running:
             "\(Int(state.releaseProgressFraction * 100))%"
         case .finished:
@@ -371,12 +434,13 @@ private struct ReleaseSummaryPanel: View {
     private var footer: some View {
         HStack {
             Spacer()
-            if state.releasePhase == .ready || state.releasePhase == .cancelled {
-                Button("开始归云") {
+            if state.releasePhase == .ready || state.releasePhase == .cancelled || state.releasePhase == .preparing {
+                Button(state.releasePhase == .preparing ? "准备中…" : "开始归云") {
                     state.startRelease()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(CloudwardColors.celadon)
+                .disabled(state.releasePhase == .preparing)
             } else if state.releasePhase == .running {
                 Button("取消") {
                     state.cancelRelease()

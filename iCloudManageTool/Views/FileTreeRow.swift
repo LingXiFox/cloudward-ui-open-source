@@ -93,7 +93,7 @@ private struct FileRowLabel: View {
                 )
                     .frame(width: 110, alignment: .leading)
 
-                OccupancyIndicator(lockState: model.lockState, isSyncBlocked: model.ref.cloudStatus.isSyncBlocked)
+                OccupancyIndicator(lockState: model.lockState, cloudStatus: model.ref.cloudStatus)
                     .frame(width: 36)
             }
             .contentShape(Rectangle())
@@ -187,14 +187,17 @@ private struct FileRowLabel: View {
 
 private struct OccupancyIndicator: View {
     let lockState: NodeLockState
-    let isSyncBlocked: Bool
+    let cloudStatus: CloudStatus
 
     var body: some View {
         Group {
-            if lockState.isChecking {
+            if cloudStatus.showsNoOccupancy {
+                Text("—")
+                    .foregroundStyle(.secondary.opacity(0.5))
+            } else if lockState.isChecking {
                 Image(systemName: "clock")
                     .foregroundStyle(CloudwardColors.cloudGray)
-            } else if isSyncBlocked {
+            } else if cloudStatus.isSyncBlocked {
                 Image(systemName: "lock.fill")
                     .foregroundStyle(CloudwardColors.amber)
             } else {
@@ -216,6 +219,17 @@ private struct OccupancyIndicator: View {
         }
         .transition(.opacity)
         .animation(Motion.standard, value: lockState.semanticState)
+    }
+}
+
+private extension CloudStatus {
+    var showsNoOccupancy: Bool {
+        switch self {
+        case .evicted, .allEvicted, .empty:
+            true
+        case .localCopy, .uploading, .notUploaded, .downloading, .conflict, .unknown, .allLocal, .partiallyLocal:
+            false
+        }
     }
 }
 
